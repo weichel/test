@@ -1,0 +1,19 @@
+<% layout('layout') -%>
+
+<input id="file" type="file" />
+
+
+<script>
+$(function() {
+  var socket = io.connect('http://localhost:4444/test');
+
+  $('#file').change(function(e) {
+    var file = e.target.files[0];
+    var stream = ss.createStream();
+
+    // upload a file to the server.
+    ss(socket).emit('file', stream, {size: file.size, name: file.name});
+    ss.createBlobReadStream(file).pipe(stream);
+  });
+});
+</script>
