@@ -22,7 +22,7 @@ var game_server = module.exports = {clients: {},sessions: [], count:0, game_core
 	game_server.game_core.update(Date.now());
 	
 	game_server.newPlayer = function(client){
-		this.game_core.players[client.id] = new game_player(client.id);
+		this.game_core.players[client.id] = new game_player(client.id, this.game_core);
 	};
 	
 	game_server.onInput = function(client, parts){

@@ -18,18 +18,22 @@ window.onload = function(){
 	game = new game_core();
 	
 	game.viewport = document.getElementById('viewport');
-	game.viewport.width = game.world.width;
-	game.viewport.height = game.world.height;
+	game.viewport.width = 1080;
+	game.viewport.height = 768;
 	game.ctx = game.viewport.getContext('2d');
 	game.ctx.font = '11px "Futura"';
 
+	$(game.viewport).mousemove(function(e){game.mouse.pos = {x: e.pageX - this.offsetLeft, y:e.pageY - this.offsetTop};});
+	$(game.viewport).click(function(e){game.mouse.q.push("lm/"+game.mouse.pos.x+"/"+game.mouse.pos.y);});
+
+	
 	game.socket = io.connect('http://localhost:8888');
 	
 	game.socket.on('connect', function(){
 		game.socket.emit('join');
 	});
 	game.socket.on('joined', function(data){
-		game.players.self = new game_player(data.id);
+		game.players.self = new game_player(data.id, game);
 		game.update(Date.now());
 	});
 	
