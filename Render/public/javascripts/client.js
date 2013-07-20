@@ -27,7 +27,7 @@ window.onload = function(){
 	$(game.viewport).click(function(e){game.mouse.q.push("lm/"+game.mouse.pos.x+"/"+game.mouse.pos.y);});
 
 	
-	game.socket = io.connect('http://localhost:8888');
+	game.socket = io.connect('http://ec2-107-21-75-125.compute-1.amazonaws.com:8888');
 	
 	game.socket.on('connect', function(){
 		game.socket.emit('join');
