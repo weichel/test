@@ -1,3 +1,13 @@
+//Globals
+var AXIS = {
+	NONE: "none", 
+	HORIZONTAL: "horizontal", 
+	VERTICAL: "vertical", 
+	BOTH: "both"
+};
+
+
+
 var frame_time = 60/1000;
 if('undefined' != typeof(global)) frame_time = 45;
 
@@ -59,6 +69,7 @@ var game_core = function(gs){
 	else {//client
 		this.client_config();
 		this.players.others = [];
+		this.camera = new game_camera(0,0,1024,768, this.world);
 		for ( var i = 0; i < 50; i++ ){
 			this.players.others.push(new game_dummy_player());
 		}
@@ -99,12 +110,13 @@ var game_dummy_player = function() {
 
 var game_bullet = function(player) {
 	this.pid = player.id;
-	this.speed = 1000;
+	this.speed = 400;
 	this.dir = {x:0, y:0};
 	this.pos = {x:0, y:0};
 	this.size = {x:2, y:2, hx:1, hy:1};
 	this.color = '#FFFFFF';
 	
+	this.start = Date.now();
 	this.pos_limits = {
             x_min: this.size.hx,
             x_max: player.game.world.width - this.size.hx,
@@ -134,6 +146,58 @@ var game_hash_map = function(w){
 	}
 	
 };
+
+var game_camera = function(xv,yv,wv,hv, w){
+	this.xView  = xv;
+	this.yView = yv;
+	this.xDead = 0;
+	this.yDead = 0;
+	this.wView = wv;
+	this.hView = hv;
+	this.axis = AXIS.BOTH;
+	
+	this.viewRect = {left: xv, top: yv, right: xv+ wv, bottom: yv+hv};
+	this.worldRect = {left: 0, top: 0, right: w.width, bottom: w.height};
+	
+};
+
+game_camera.prototype.within_view = function(r){
+	return ( r.left <= this.viewRect.left &&
+			 r.right >= this.viewRect.right &&
+			 r.top <= this.viewRect.top &&
+			 r.bottom >= this.viewRect.bottom);
+};
+
+game_camera.prototype.follow = function(item, xd,yd){
+	this.followed = item;
+	this.xDead = xd;
+	this.yDead = yd;
+};
+
+game_camera.prototype.update = function(){
+	if (this.followed){
+		if (this.axis == AXIS.HORIZONTAL || this.axis == AXIS.BOTH){
+			if(this.followed.pos.x - this.xView + this.xDead > this.wView)this.xView = this.followed.pos.x -(this.wView-this.xDead);
+			else if ( this.followed.pos.x - this.xDead < this.xView)this.xView = this.followed.pos.x - this.xDead;
+		}if ( this.axis == AXIS.VERTICAL || this.axis == AXIS.BOTH){
+			if(this.followed.pos.y - this.yView + this.yDead > this.hView)this.yView = this.followed.pos.y - (this.hView-this.yDead);
+			else if( this.followed.pos.y - this.yDead < this.yView)this.yView = this.followed.pos.y - this.yDead;
+		}
+	}
+
+	this.viewRect.left = this.xView;
+	this.viewRect.top = this.yView;
+	this.viewRect.right = this.xView + this.wView;
+	this.viewRect.bottom = this.yView + this.hView;
+	
+	if (!this.within_view(this.worldRect)){
+		if ( this.viewRect.left < this.worldRect.left )this.xView = this.worldRect.left;
+		if ( this.viewRect.top < this.worldRect.top ) this.yView = this.worldRect.top;
+		if ( this.viewRect.right > this.worldRect.right )this.xView = this.worldRect.right - this.wView;
+		if ( this.viewRect.bottom > this.worldRect.bottom ) this.yView = this.worldRect.bottom - this.hView;
+		
+	}
+}
 
 game_core.prototype.grid_ids = function(item){
 	var arr = [];
@@ -206,19 +270,19 @@ game_player.prototype.die = function(){
 game_player.prototype.draw = function(){
 
         this.game.ctx.fillStyle = this.color;
-        this.game.ctx.fillRect(this.pos.x - this.size.hx, this.pos.y - this.size.hy, this.size.x, this.size.y);
-
+        //this.game.ctx.fillRect(this.pos.x - this.size.hx, this.pos.y - this.size.hy, this.size.x, this.size.y);
+		this.game.ctx.fillRect((this.pos.x-this.size.hx)-this.game.camera.xView,(this.pos.y-this.size.hy)-this.game.camera.yView, this.size.x, this.size.y);
 		this.draw_info();
 };
 
 game_player.prototype.draw_info = function(){
 	this.game.ctx.fillStyle = this.color;
-	this.game.ctx.fillText(this.hp + "",parseInt(this.pos.x-9), parseInt(this.pos.y-10));
+	this.game.ctx.fillText(this.hp + "",parseInt(this.pos.x-9-this.game.camera.xView), parseInt(this.pos.y-10-this.game.camera.yView));
 };
 
-game_bullet.prototype.draw = function(){
+game_bullet.prototype.draw = function(camera){
 	game.ctx.fillStyle = this.color;
-	game.ctx.fillRect(this.pos.x - 1, this.pos.y - 1, 2, 2);
+	game.ctx.fillRect(this.pos.x - 1 - camera.xView, this.pos.y - 1 - camera.yView, 2, 2);
 };
 
 game_bullet.prototype.destroy = function(player){
@@ -285,31 +349,35 @@ game_core.prototype.client_update = function() {
 	this.client_process_updates();
 	
 	
+	
 	for (var i = 0; i < this.players.self.bullets.length; i++){
-		this.players.self.bullets[i].draw();
+		this.players.self.bullets[i].draw(this.camera);
 	}
 	
         //Now they should have updated, we can draw the entity
     for (var i = j = 0; i < this.players.others.length; i++){
 		if ( this.players.others[i].show ){
 			j = this.players.others[i];
+			if (j.pid == this.players.self.id)alert("AS");
+			this.ctx.fillStyle = '#cc00FF';
+			this.ctx.fillRect(j.pos.x - 8 - this.camera.xView, j.pos.y - 8 - this.camera.yView, 16, 16);
 			
-			game.ctx.fillStyle = '#cc00FF';
-			game.ctx.fillRect(j.pos.x - 8, j.pos.y - 8, 16, 16);
+			this.ctx.fillText(j.hp + "",parseInt(j.pos.x-9-this.camera.xView), parseInt(j.pos.y-10-this.camera.yView));
 			if (j.bullets){
 				for (var k = 0; k < j.bullets.length;k++){
-					game.ctx.fillStyle = '#FFFFFF'
-					game.ctx.fillRect(j.bullets[k].pos.x - 1, j.bullets[k].pos.y - 1, 2, 2);
+					this.ctx.fillStyle = '#FFFFFF'
+					this.ctx.fillRect(j.bullets[k].pos.x - 1 - this.camera.xView, j.bullets[k].pos.y - 1 - this.camera.yView, 2, 2);
 				}
 			}
 		}
 	}
         //When we are doing client side prediction, we smooth out our position
         //across frames using local input states we have stored.
+	
     this.client_update_local_position();
-
+	this.camera.update();
     if (this.players.self)this.players.self.draw();
-
+	
 
 }; 
 
@@ -350,7 +418,7 @@ game_core.prototype.client_process_updates = function(){
 
 		var latest_server_data = this.server_updates[ this.server_updates.length-1 ];
 
-		
+		this.players.self.hp = previous.u.hp;
 		
 		if (target.ps.length == previous.ps.length){
 			for ( var i = 0; i < previous.ps.length; i++ ){
@@ -360,6 +428,7 @@ game_core.prototype.client_process_updates = function(){
 				this.players.others[i].pos = this.v_lerp( this.players.others[i].pos, v, this._pdt*25);
 				this.players.others[i].show = 1;
 				this.players.others[i].bullets = previous.ps[i].b;
+				this.players.others[i].hp = previous.ps[i].hp;
 			}
 		}
 	}
@@ -371,7 +440,7 @@ game_core.prototype.server_update = function() {
 	var a = [];
 	for(var i = j = 0; i < this.server_instance.sessions.length;i++){
 		j = this.server_instance.sessions[i];
-		a.push({p:this.players[j].pos, id: this.players[j].id, b: this.players[j].bullets});
+		a.push({p:this.players[j].pos, id: this.players[j].id, b: this.players[j].bullets, hp:this.players[j].hp});
 	}
 
 	this.laststate = {
@@ -392,9 +461,7 @@ game_core.prototype.client_serverupdate = function(data){
 	this.client_time = this.server_time - (this.net_offset/1000);
 	
 	this.players.self.pos = this.pos(data.u.p);
-	this.players.self.hp = data.u.hp;
 	data.ps.splice(data.u.di,1);
-	//this.players.others = data.ps;
 	this.server_updates.push(data);
 	
 	if(this.server_updates.length >= ( 60*this.buffer_size )) {
@@ -523,7 +590,7 @@ game_core.prototype.server_update_physics = function(){
 		var nd = this.process_inputs(this.players[j]);
 		this.players[j].pos = this.v_add( this.players[j].old_state.pos, nd);
 		
-		for (var k = 0; k < this.players[j].bullets.length; k++){
+		for (var k = 0; k < this.players[j].bullets.length; k++){if (!this.players[j].bullets[k])continue;
 			this.players[j].bullets[k].pos = this.v_add(this.players[j].bullets[k].pos, this.physics_movement_vector(this.players[j].bullets[k],this.players[j].bullets[k].dir.x, this.players[j].bullets[k].dir.y ));
 			if(!this.check_collision_bullet(this.players[j].bullets[k], this.players[j]))this.addto_hash_map(this.players[j].bullets[k]);
 			
@@ -648,12 +715,12 @@ game_core.prototype.check_collision = function(item){
 };
 
 game_core.prototype.check_collision_bullet = function(item,p){
+	item.pos.x = item.pos.x.fixed(4);
+	item.pos.y = item.pos.y.fixed(4);
 	if(item.pos.x <= item.pos_limits.x_min || item.pos.x >= item.pos_limits.x_max || item.pos.y <= item.pos_limits.y_min || item.pos.y >= item.pos_limits.y_max) {
 		item.destroy(p);
 		return true;
 	}else {
-		item.pos.x = item.pos.x.fixed(4);
-		item.pos.y = item.pos.y.fixed(4);
 		return false;
 	}
 };
